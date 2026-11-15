@@ -26,6 +26,12 @@
   button.fail { border-color: var(--bad); }
   button.fail .note { color: var(--bad); }
   button:disabled { cursor: default; }
+  form { display: flex; gap: 8px; width: 100%; max-width: 420px; margin-top: 12px; }
+  input { flex: 1; min-width: 0; background: #140d12; color: var(--hi); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px; font: inherit; font-size: 16px; outline: none; }
+  input:focus { border-color: var(--fg); }
+  input::placeholder { color: var(--dim); }
+  form button { aspect-ratio: auto; font-size: 16px; padding: 0 18px; }
   footer { margin-top: 24px; font-size: 12px; color: var(--dim); min-height: 1em; text-align: center; }
 </style>
 </head>
@@ -37,6 +43,10 @@
     <button data-msg="&lt;3" data-tag="two_hearts"><span>&lt;3</span><span class="note"></span></button>
     <button data-msg="Чекни тг" data-tag="iphone"><span>Чекни тг</span><span class="note"></span></button>
   </div>
+  <form id="own" autocomplete="off">
+    <input id="text" maxlength="200" placeholder="свой текст…" enterkeyhint="send">
+    <button type="submit" id="go">→</button>
+  </form>
   <footer id="foot"></footer>
 <script>
   const TOPIC = 'ping-RCwOHHQoNQX0O9';
@@ -53,7 +63,29 @@
     if (!r.ok) throw new Error('HTTP ' + r.status);
   }
 
-  document.querySelectorAll('button').forEach(b => {
+  const own = document.getElementById('own');
+  const text = document.getElementById('text');
+  const go = document.getElementById('go');
+  own.addEventListener('submit', async e => {
+    e.preventDefault();
+    const msg = text.value.trim();
+    if (!msg || go.disabled) return;
+    go.disabled = true;
+    go.textContent = '…';
+    try {
+      await send(msg, 'speech_balloon');
+      text.value = '';
+      go.textContent = '✓';
+      foot.textContent = 'отправлено ✓';
+      if (navigator.vibrate) navigator.vibrate(40);
+    } catch (err) {
+      go.textContent = '→';
+      foot.textContent = navigator.onLine ? 'не ушло: нет ответа от сервера' : 'не ушло: нет интернета';
+    }
+    setTimeout(() => { go.disabled = false; go.textContent = '→'; }, COOLDOWN);
+  });
+
+  document.querySelectorAll('.grid button').forEach(b => {
     const note = b.querySelector('.note');
     b.addEventListener('click', async () => {
       if (b.disabled) return;
