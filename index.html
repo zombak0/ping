@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0a080a">
+<title>ping</title>
+<style>
+  :root { --bg: #0a080a; --fg: #F06FA8; --dim: #7a3657; --border: #3b1d2c; --hi: #FDE6F0; --bad: #E24B4A; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  body { display: flex; flex-direction: column; justify-content: center; align-items: center;
+    padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+  h1 { font-size: 14px; font-weight: normal; color: var(--dim); letter-spacing: .2em; margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 420px; }
+  button { appearance: none; border: 1px solid var(--border); background: #140d12; color: var(--fg);
+    font: inherit; font-size: 20px; border-radius: 14px; aspect-ratio: 1 / 1; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    transition: transform .08s, background .2s, border-color .2s, color .2s; user-select: none; }
+  button:active { transform: scale(.96); }
+  button .note { font-size: 12px; color: var(--dim); min-height: 1em; }
+  button.sent { border-color: var(--fg); background: #2a1220; color: var(--hi); }
+  button.sent .note { color: var(--hi); }
+  button.fail { border-color: var(--bad); }
+  button.fail .note { color: var(--bad); }
+  button:disabled { cursor: default; }
+  footer { margin-top: 24px; font-size: 12px; color: var(--dim); min-height: 1em; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>— ping —</h1>
+  <div class="grid">
+    <button data-msg="Писька!" data-tag="eggplant"><span>Писька!</span><span class="note"></span></button>
+    <button data-msg="Скучаю" data-tag="heart"><span>Скучаю</span><span class="note"></span></button>
+    <button data-msg="&lt;3" data-tag="two_hearts"><span>&lt;3</span><span class="note"></span></button>
+    <button data-msg="Чекни тг" data-tag="iphone"><span>Чекни тг</span><span class="note"></span></button>
+  </div>
+  <footer id="foot"></footer>
+<script>
+  const TOPIC = 'ping-RCwOHHQoNQX0O9';
+  const COOLDOWN = 3000;
+  const foot = document.getElementById('foot');
+
+  // JSON на корень ntfy; text/plain — простой CORS-запрос без preflight
+  async function send(msg, tag) {
+    const r = await fetch('https://ntfy.sh/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ topic: TOPIC, message: msg, tags: [tag] }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  }
+
+  document.querySelectorAll('button').forEach(b => {
+    const note = b.querySelector('.note');
+    b.addEventListener('click', async () => {
+      if (b.disabled) return;
+      b.disabled = true;
+      b.classList.remove('sent', 'fail');
+      note.textContent = '…';
+      try {
+        await send(b.dataset.msg, b.dataset.tag);
+        b.classList.add('sent');
+        note.textContent = 'отправлено ✓';
+        foot.textContent = '';
+        if (navigator.vibrate) navigator.vibrate(40);
+      } catch (e) {
+        b.classList.add('fail');
+        note.textContent = 'не ушло, ещё раз';
+        foot.textContent = navigator.onLine ? 'нет ответа от сервера' : 'нет интернета';
+      }
+      setTimeout(() => {
+        b.disabled = false;
+        b.classList.remove('sent');
+        if (!b.classList.contains('fail')) note.textContent = '';
+      }, COOLDOWN);
+    });
+  });
+</script>
+</body>
+</html>
