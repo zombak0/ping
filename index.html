@@ -55,7 +55,8 @@
   const POW_BITS = 16;           // ping.pyw: POW_BITS
   const BLOCK = 318;             // RSA-OAEP-256, 3072 бит: 384 − 2·32 − 2
   const MIN_STAY = 3000;         // мс на странице до первой отправки
-  const COOLDOWN = 30000;
+  const COOLDOWN = 15000;
+  const NET_MS = 10000;          // таймаут запроса к ntfy: мобильные операторы РФ его режут, без таймаута кнопка висит
   const PER_HOUR = 10;
   const LS = 'ping-sent';
   const loaded = Date.now();
@@ -117,13 +118,20 @@
 
   const unb64u = s => Uint8Array.from(atob(s.split('-').join('+').split('_').join('/') + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
 
+  // fetch с таймаутом; AbortController вместо AbortSignal.timeout — старые Safari
+  async function net(url, opt) {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), NET_MS);
+    try { return await fetch(url, Object.assign({ signal: ac.signal }, opt)); }
+    finally { clearTimeout(t); }
+  }
+
   // свежий ключ шифрования из <топик>-k: k1:kid:exp:n:подпись, подпись — долгим ключом (SIGN_N)
   // над k1|топик|kid|exp|n; чужое, просроченное и неподписанное пропускается
   let signKey = null;
   async function freshKey() {
     signKey = signKey || await crypto.subtle.importKey('jwk', { kty: 'RSA', e: 'AQAB', n: SIGN_N, alg: 'RS256', ext: true },
       { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-    const r = await fetch('https://ntfy.sh/' + TOPIC + '-k/json?poll=1&since=13h');
+    const r = await net('https://ntfy.sh/' + TOPIC + '-k/json?poll=1&since=13h');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const now = Date.now() / 1000;
     const msgs = (await r.text()).split(String.fromCharCode(10))
@@ -218,7 +226,7 @@
       const data = new TextEncoder().encode(JSON.stringify({ f, m, t: Math.floor(Date.now() / 1000) }));
       const ct = await encrypt(k.n, data);
       const nonce = await work(k.kid, ct);
-      const r = await fetch('https://ntfy.sh/', {
+      const r = await net('https://ntfy.sh/', {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },   // простой CORS-запрос без preflight
         body: JSON.stringify({ topic: TOPIC, message: 'p2:' + k.kid + ':' + nonce + ':' + ct }),
@@ -229,7 +237,9 @@
       if (navigator.vibrate) navigator.vibrate(40);
       done(true);
     } catch (x) {
-      done(false, navigator.onLine ? "Couldn't send. Try again." : "You're offline.");
+      // HTTP-ошибка — сервер ответил; иначе не достучались (сеть, блокировка, таймаут)
+      done(false, !navigator.onLine ? "You're offline."
+        : String(x && x.message).startsWith('HTTP') ? "Couldn't send. Try again." : "Can't reach server. Try Wi-Fi.");
     }
   });
 </script>
