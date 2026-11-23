@@ -39,11 +39,11 @@
   <p class="sub">send a ping to my desk</p>
   <form id="form" autocomplete="off" novalidate>
     <label for="from">from</label>
-    <input id="from" maxlength="32" placeholder="your name" autocapitalize="words" enterkeyhint="next">
-    <div class="cnt" id="fromCnt">0 / 32</div>
+    <input id="from" maxlength="18" placeholder="your name" autocapitalize="words" enterkeyhint="next">
+    <div class="cnt" id="fromCnt">0 / 18</div>
     <label for="msg">message</label>
-    <textarea id="msg" maxlength="200" placeholder="what's up?"></textarea>
-    <div class="cnt" id="msgCnt">0 / 200</div>
+    <textarea id="msg" maxlength="72" placeholder="what's up?"></textarea>
+    <div class="cnt" id="msgCnt">0 / 72</div>
     <div class="trap" aria-hidden="true"><label for="site">website</label><input id="site" tabindex="-1" autocomplete="off"></div>
     <button type="submit" id="go" aria-live="polite">send</button>
   </form>
@@ -63,8 +63,9 @@
 
   const $ = id => document.getElementById(id);
   const form = $('form'), from = $('from'), msg = $('msg'), go = $('go');
-  from.addEventListener('input', () => { $('fromCnt').textContent = from.value.length + ' / 32'; });
-  msg.addEventListener('input', () => { $('msgCnt').textContent = msg.value.length + ' / 200'; });
+  // лимиты = ping.pyw NAME_MAX, MSG_MAX
+  from.addEventListener('input', () => { $('fromCnt').textContent = from.value.length + ' / 18'; });
+  msg.addEventListener('input', () => { $('msgCnt').textContent = msg.value.length + ' / 72'; });
   msg.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) form.requestSubmit(); });
 
   // SHA-256 на чистом JS: subtle.digest асинхронный на каждый вызов — для перебора nonce медленно
