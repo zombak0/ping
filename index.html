@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0a080a">
+<title>ping</title>
+<style>
+  :root { --bg: #0a080a; --fg: #F06FA8; --dim: #7a3657; --border: #3b1d2c; --hi: #FDE6F0; --bad: #E24B4A; --field: #140d12; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--fg);
+    font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  body { display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; min-height: 100dvh;
+    padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+  main { width: 100%; max-width: 420px; display: flex; flex-direction: column; }
+  h1 { font-size: 14px; font-weight: normal; color: var(--dim); letter-spacing: .2em; text-align: center; margin: 0 0 6px; }
+  .sub { font-size: 12px; color: var(--dim); text-align: center; margin: 0 0 28px; }
+  label { font-size: 12px; color: var(--dim); display: block; margin: 0 0 6px; }
+  input, textarea { width: 100%; background: var(--field); color: var(--hi); border: 1px solid var(--border);
+    border-radius: 14px; padding: 13px; font: inherit; font-size: 16px; outline: none; margin: 0 0 4px; }
+  textarea { resize: none; height: 120px; display: block; }
+  input:focus, textarea:focus { border-color: var(--fg); }
+  input::placeholder, textarea::placeholder { color: var(--dim); }
+  .cnt { font-size: 11px; color: var(--dim); text-align: right; margin: 0 0 14px; }
+  .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  button { appearance: none; width: 100%; background: var(--field); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 14px; padding: 15px; font: inherit; font-size: 16px; cursor: pointer; margin-top: 6px;
+    transition: transform .08s, background .2s, border-color .2s, color .2s; user-select: none; }
+  button:active { transform: scale(.98); }
+  button.sent { border-color: var(--fg); background: #2a1220; color: var(--hi); }
+  button.fail { border-color: var(--bad); color: var(--bad); }
+  .note { font-size: 11px; color: var(--dim); text-align: center; margin-top: 28px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>— ping —</h1>
+  <p class="sub">send a ping to my desk</p>
+  <form id="form" autocomplete="off" novalidate>
+    <label for="from">from</label>
+    <input id="from" maxlength="32" placeholder="your name" autocapitalize="words" enterkeyhint="next">
+    <div class="cnt" id="fromCnt">0 / 32</div>
+    <label for="msg">message</label>
+    <textarea id="msg" maxlength="200" placeholder="what's up?"></textarea>
+    <div class="cnt" id="msgCnt">0 / 200</div>
+    <div class="trap" aria-hidden="true"><label for="site">website</label><input id="site" tabindex="-1" autocomplete="off"></div>
+    <button type="submit" id="go" aria-live="polite">send</button>
+  </form>
+  <p class="note">Encrypted on your device before sending.<br>Delivered within seconds.</p>
+</main>
+<script>
+  const TOPIC = 'ping-pCFick2rEV1ZzTNUB0VO';
+  const SIGN_N = '7KiokvsdegwB-G11fd2SIKydXqpHeY9XixNjgnXEZL3tJRG3ce47S_MTi-Z22g33Pf0182CmnpqmICjSwGzmk66OTQTKSdO4DUQZoIpKOLAFtByw9OTniKp8F2_oWSj_3KwdObKjoYQUlAvMV8en5DplK7mtp17UqhzHUGr3MhM8PivqvwNHfjbYi9NqBaGMV7Ht7Hl5OrB2DaZ6_cgxjdthbcSQUmtytFpOFPhM1pUW_df7lkreFuvIVyM_j8GPBodicNge9c7fm3sLrZhrbp3K_BgUbbvcftr3joVJpd6y_EF_TGiCptF3LzWZ224Ib5__Q0xrjgjdujcy5TK8dyyCXThZOmbHRQaijfYTPCeHiMxUzAOOhp6nMLuOWXbPNWo83Ug2odxoRZyz-OXKitZkHOEH8O7ijoP6mWM_YM-MgFG6xLKAjFxmyJpeCSMCpCHOzXx2lLk7fej9cPYNrbvIbvVgr8f2nnccyZ81TKY3i2lc7-pX3lCBczx3tyJbvJlVHtHN7m4BxKhsXAIdqL2Qm0YVxSfYY1r4l8iG1B_rULvvg8k97CLfDS2IxzYIMmts2E0sM4YBi1altuRE3Kt8onbzmmjIQeeuIjMmX9likFJReNsm5dlzlGBEtNKHT8Ouow6DBm4D8PtYlE0eSfKE8uCr37IOZjQgXxbBAQ0';
+  const POW_BITS = 16;           // ping.pyw: POW_BITS
+  const BLOCK = 318;             // RSA-OAEP-256, 3072 бит: 384 − 2·32 − 2
+  const MIN_STAY = 3000;         // мс на странице до первой отправки
+  const COOLDOWN = 30000;
+  const PER_HOUR = 10;
+  const LS = 'ping-sent';
+  const loaded = Date.now();
+
+  const $ = id => document.getElementById(id);
+  const form = $('form'), from = $('from'), msg = $('msg'), go = $('go');
+  from.addEventListener('input', () => { $('fromCnt').textContent = from.value.length + ' / 32'; });
+  msg.addEventListener('input', () => { $('msgCnt').textContent = msg.value.length + ' / 200'; });
+  msg.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) form.requestSubmit(); });
+
+  // SHA-256 на чистом JS: subtle.digest асинхронный на каждый вызов — для перебора nonce медленно
+  const K = [], H0 = [];
+  (() => {
+    const frac = x => ((x - Math.floor(x)) * 4294967296) >>> 0;
+    for (let n = 2, c = 0; c < 64; n++) {
+      let p = true;
+      for (let d = 2; d * d <= n; d++) if (n % d === 0) { p = false; break; }
+      if (!p) continue;
+      if (c < 8) H0[c] = frac(Math.sqrt(n));
+      K[c++] = frac(Math.cbrt(n));
+    }
+  })();
+  const w = new Uint32Array(64);
+  function sha256(bytes) {
+    const l = bytes.length, nb = ((l + 72) >> 6) << 6;
+    const b = new Uint8Array(nb); b.set(bytes); b[l] = 0x80;
+    const dv = new DataView(b.buffer);
+    dv.setUint32(nb - 4, (l * 8) >>> 0); dv.setUint32(nb - 8, Math.floor(l / 536870912));
+    const h = H0.slice();
+    for (let o = 0; o < nb; o += 64) {
+      for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+      for (let i = 16; i < 64; i++) {
+        const x = w[i - 15], y = w[i - 2];
+        const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+        const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+      }
+      let [a, bb, c, d, e, f, g, hh] = h;
+      for (let i = 0; i < 64; i++) {
+        const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+        const t1 = (hh + S1 + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0;
+        const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+        const t2 = (S0 + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;
+        hh = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;
+      }
+      h[0] = (h[0] + a) | 0; h[1] = (h[1] + bb) | 0; h[2] = (h[2] + c) | 0; h[3] = (h[3] + d) | 0;
+      h[4] = (h[4] + e) | 0; h[5] = (h[5] + f) | 0; h[6] = (h[6] + g) | 0; h[7] = (h[7] + hh) | 0;
+    }
+    const out = new Uint8Array(32), ov = new DataView(out.buffer);
+    h.forEach((v, i) => ov.setUint32(i * 4, v >>> 0));
+    return out;
+  }
+
+  const b64u = bytes => {
+    let s = '';
+    for (const x of bytes) s += String.fromCharCode(x);
+    return btoa(s).split('+').join('-').split('/').join('_').split('=').join('');
+  };
+
+  const unb64u = s => Uint8Array.from(atob(s.split('-').join('+').split('_').join('/') + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+
+  // свежий ключ шифрования из <топик>-k: k1:kid:exp:n:подпись, подпись — долгим ключом (SIGN_N)
+  // над k1|топик|kid|exp|n; чужое, просроченное и неподписанное пропускается
+  let signKey = null;
+  async function freshKey() {
+    signKey = signKey || await crypto.subtle.importKey('jwk', { kty: 'RSA', e: 'AQAB', n: SIGN_N, alg: 'RS256', ext: true },
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    const r = await fetch('https://ntfy.sh/' + TOPIC + '-k/json?poll=1&since=13h');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const now = Date.now() / 1000;
+    const msgs = (await r.text()).split(String.fromCharCode(10))
+      .map(l => { try { return JSON.parse(l); } catch (e) { return null; } })
+      .filter(m => m && m.event === 'message' && typeof m.message === 'string')
+      .sort((a, b) => b.time - a.time);
+    for (const m of msgs) {
+      const p = m.message.split(':');
+      if (p.length !== 5 || p[0] !== 'k1' || !/^[0-9a-f]{8}$/.test(p[1]) || !(Number(p[2]) > now + 60)) continue;
+      try {
+        const body = new TextEncoder().encode('k1|' + TOPIC + '|' + p[1] + '|' + p[2] + '|' + p[3]);
+        if (await crypto.subtle.verify('RSASSA-PKCS1-v1_5', signKey, unb64u(p[4]), body)) return { kid: p[1], n: p[3] };
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  async function encrypt(n, data) {
+    const pubKey = await crypto.subtle.importKey('jwk', { kty: 'RSA', e: 'AQAB', n, alg: 'RSA-OAEP-256', ext: true },
+      { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+    const blocks = [];
+    for (let i = 0; i < data.length; i += BLOCK)
+      blocks.push(b64u(new Uint8Array(await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, pubKey, data.slice(i, i + BLOCK)))));
+    return blocks.join('.');
+  }
+
+  // nonce: sha256(sha256(топик|kid|шифр) + ':' + nonce) начинается с POW_BITS нулевых бит
+  async function work(kid, ct) {
+    const buf = new Uint8Array(48);
+    buf.set(sha256(new TextEncoder().encode(TOPIC + '|' + kid + '|' + ct))); buf[32] = 58;
+    const need = 2 ** POW_BITS;
+    for (let n = 0; ; ) {
+      for (let k = 0; k < 4000; k++, n++) {
+        const s = String(n);
+        for (let j = 0; j < s.length; j++) buf[33 + j] = s.charCodeAt(j);
+        const h = sha256(buf.subarray(0, 33 + s.length));
+        if (((h[0] << 24 | h[1] << 16 | h[2] << 8 | h[3]) >>> (32 - POW_BITS)) === 0) return s;
+      }
+      go.textContent = 'sending… ' + Math.min(99, Math.floor(n * 100 / need)) + '%';
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  function sentLog() {
+    try { const a = JSON.parse(localStorage.getItem(LS) || '[]'); return Array.isArray(a) ? a.filter(t => t > Date.now() - 3600e3) : []; }
+    catch (e) { return []; }
+  }
+  function logSent() {
+    try { localStorage.setItem(LS, JSON.stringify(sentLog().concat(Date.now()))); } catch (e) {}
+  }
+
+  let busy = false, sayT = 0;
+  // ошибка — текстом на кнопке; через 3 с или при правке полей кнопка снова «send»
+  function say(text) {
+    clearTimeout(sayT);
+    go.classList.remove('sent'); go.classList.add('fail'); go.textContent = text;
+    sayT = setTimeout(reset, 3000);
+  }
+  function reset() {
+    clearTimeout(sayT);
+    if (!busy) { go.classList.remove('fail'); go.textContent = 'send'; }
+  }
+  from.addEventListener('input', reset);
+  msg.addEventListener('input', reset);
+
+  function done(ok, text) {
+    if (!ok) { busy = false; say(text); return; }
+    go.classList.add('sent');
+    let left = COOLDOWN / 1000;
+    go.textContent = 'sent ✓';
+    const t = setInterval(() => {
+      left--;
+      go.textContent = left > 0 ? 'sent ✓  wait ' + left + 's' : 'send';
+      if (left <= 0) { clearInterval(t); go.classList.remove('sent'); busy = false; }
+    }, 1000);
+  }
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (busy) return;
+    const f = from.value.trim(), m = msg.value.trim();
+    if (!f || !m) { say('Fill in both fields'); return; }
+    const log = sentLog();
+    if (log.length >= PER_HOUR) { say('Hourly limit reached. Try later.'); return; }
+    const wait = Math.max(MIN_STAY - (Date.now() - loaded), log.length ? COOLDOWN - (Date.now() - log[log.length - 1]) : 0);
+    if (wait > 0) { say('Too fast. Wait ' + Math.ceil(wait / 1000) + 's'); return; }
+    busy = true; clearTimeout(sayT); go.classList.remove('sent', 'fail'); go.textContent = 'sending…';
+    if ($('site').value) { msg.value = ''; msg.dispatchEvent(new Event('input')); done(true); return; }
+    try {
+      const k = await freshKey();
+      if (!k) { done(false, 'Recipient is offline. Try later.'); return; }
+      const data = new TextEncoder().encode(JSON.stringify({ f, m, t: Math.floor(Date.now() / 1000) }));
+      const ct = await encrypt(k.n, data);
+      const nonce = await work(k.kid, ct);
+      const r = await fetch('https://ntfy.sh/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },   // простой CORS-запрос без preflight
+        body: JSON.stringify({ topic: TOPIC, message: 'p2:' + k.kid + ':' + nonce + ':' + ct }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      logSent();
+      msg.value = ''; msg.dispatchEvent(new Event('input'));
+      if (navigator.vibrate) navigator.vibrate(40);
+      done(true);
+    } catch (x) {
+      done(false, navigator.onLine ? "Couldn't send. Try again." : "You're offline.");
+    }
+  });
+</script>
+</body>
+</html>
